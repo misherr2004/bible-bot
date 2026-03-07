@@ -1,0 +1,6 @@
+.env
+.git
+*.md
+state.json
+*.log
+bible-bot
