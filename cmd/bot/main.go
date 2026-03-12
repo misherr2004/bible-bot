@@ -13,7 +13,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-const reminderMessage = "Ты сегодня не читала Библию 🙏 Загляни в бота — тебя ждёт сегодняшний отрывок."
+const reminderMessage = "Сегодня ты ещё не открывал(а) план чтения. Загляни в бота — там отрывки на этот день."
 
 func main() {
 	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {

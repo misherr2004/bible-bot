@@ -10,9 +10,9 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// StartScheduler запускает ежедневное напоминание. Каждый день в REMINDER_HOUR
-// проверяет всех пользователей из БД: кто не нажимал «Прочитала!»/«Следующий день»
-// за последние 24 часа — тому отправляется напоминание.
+// StartScheduler запускает ежедневное напоминание. Каждый день в REMINDER_HOUR (например 15:00)
+// проверяет: если пользователь до этого времени не нажимал ни «Прочитал(а)!», ни «Следующий день» —
+// отправляется напоминание. Стрик обнуляется, если до 00:00 не было ни одного нажатия (логика в store).
 func StartScheduler(cfg *config.Config, st *store.Store, sendReminderTo func(chatID int64)) {
 	loc, err := time.LoadLocation(cfg.Timezone)
 	if err != nil {
@@ -28,7 +28,7 @@ func StartScheduler(cfg *config.Config, st *store.Store, sendReminderTo func(cha
 			return
 		}
 		for _, chatID := range chatIDs {
-			if st.LastReadWithin(chatID, 24*time.Hour) {
+			if st.HadActivityToday(chatID, loc) {
 				continue
 			}
 			sendReminderTo(chatID)

@@ -24,7 +24,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("DATABASE_URL is required (PostgreSQL connection string)")
 	}
 
-	reminderHour := 12
+	reminderHour := 15
 	if h := os.Getenv("REMINDER_HOUR"); h != "" {
 		if parsed, err := strconv.Atoi(h); err == nil && parsed >= 0 && parsed <= 23 {
 			reminderHour = parsed

@@ -88,7 +88,7 @@ func (s *Store) GetState(chatID int64) (UserState, error) {
 	return st, nil
 }
 
-// MarkRead сохраняет прогресс: «прочитала сегодняшний день». Обновляет last_read_at и серию (streak).
+// MarkRead сохраняет прогресс: «прочитал(а) сегодняшний день». Обновляет last_read_at и серию (streak).
 // Номер дня (current_day) не меняется — его увеличивает только «Следующий день».
 func (s *Store) MarkRead(chatID int64) error {
 	if err := s.EnsureUser(chatID); err != nil {
@@ -123,17 +123,35 @@ func (s *Store) MarkRead(chatID int64) error {
 	return err
 }
 
-// AdvanceDay увеличивает номер дня на 1 (например с 6 на 7) и возвращает новый день.
-// Не трогает last_read_at и streak — прогресс сохраняется кнопкой «Прочитала!».
+// AdvanceDay увеличивает номер дня на 1 и обновляет last_read_at и streak
+// (нажатие «Следующий день» тоже считается активностью за день; стрик обнуляется, если до 00:00 не нажал ни одну кнопку).
 func (s *Store) AdvanceDay(chatID int64) (newDay int, planRestarted bool, err error) {
 	if err := s.EnsureUser(chatID); err != nil {
 		return 0, false, err
 	}
 
-	var currentDay int
-	err = s.db.QueryRow(`SELECT current_day FROM user_state WHERE chat_id = $1`, chatID).Scan(&currentDay)
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	var currentDay, streak int
+	var lastReadAt sql.NullTime
+	err = s.db.QueryRow(`SELECT current_day, streak, last_read_at FROM user_state WHERE chat_id = $1`, chatID).
+		Scan(&currentDay, &streak, &lastReadAt)
 	if err != nil {
 		return 0, false, err
+	}
+
+	// Обновляем стрик: если последняя активность была вчера — +1, если раньше — сброс на 1
+	if lastReadAt.Valid {
+		lastDate := time.Date(lastReadAt.Time.Year(), lastReadAt.Time.Month(), lastReadAt.Time.Day(), 0, 0, 0, 0, time.UTC)
+		daysDiff := int(today.Sub(lastDate).Hours() / 24)
+		if daysDiff == 1 {
+			streak++
+		} else if daysDiff > 1 {
+			streak = 1
+		}
+	} else {
+		streak = 1
 	}
 
 	newDay = currentDay + 1
@@ -143,7 +161,9 @@ func (s *Store) AdvanceDay(chatID int64) (newDay int, planRestarted bool, err er
 		planRestarted = true
 	}
 
-	_, err = s.db.Exec(`UPDATE user_state SET current_day = $1 WHERE chat_id = $2`, newDay, chatID)
+	_, err = s.db.Exec(`
+		UPDATE user_state SET current_day = $1, last_read_at = $2, streak = $3 WHERE chat_id = $4
+	`, newDay, now, streak, chatID)
 	if err != nil {
 		return 0, false, err
 	}
@@ -168,7 +188,7 @@ func (s *Store) GetAllChatIDs() ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// LastReadWithin возвращает true, если пользователь нажимал «Прочитала!»/«Следующий день» в последние d.
+// LastReadWithin возвращает true, если пользователь нажимал что-то в боте в последние d.
 func (s *Store) LastReadWithin(chatID int64, d time.Duration) bool {
 	var lastReadAt sql.NullTime
 	err := s.db.QueryRow(`SELECT last_read_at FROM user_state WHERE chat_id = $1`, chatID).Scan(&lastReadAt)
@@ -176,6 +196,19 @@ func (s *Store) LastReadWithin(chatID int64, d time.Duration) bool {
 		return false
 	}
 	return time.Since(lastReadAt.Time) < d
+}
+
+// HadActivityToday возвращает true, если пользователь нажимал «Прочитал(а)!» или «Следующий день» сегодня (по часовому поясу loc).
+// Используется для напоминания в 15:00: если активности сегодня не было — шлём напоминание.
+func (s *Store) HadActivityToday(chatID int64, loc *time.Location) bool {
+	var lastReadAt sql.NullTime
+	err := s.db.QueryRow(`SELECT last_read_at FROM user_state WHERE chat_id = $1`, chatID).Scan(&lastReadAt)
+	if err != nil || !lastReadAt.Valid {
+		return false
+	}
+	nowInLoc := time.Now().In(loc)
+	todayStart := time.Date(nowInLoc.Year(), nowInLoc.Month(), nowInLoc.Day(), 0, 0, 0, 0, loc)
+	return !lastReadAt.Time.In(loc).Before(todayStart)
 }
 
 func (s *Store) Close() error {
