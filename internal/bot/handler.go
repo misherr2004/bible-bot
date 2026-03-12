@@ -17,12 +17,13 @@ const (
 )
 
 type Handler struct {
-	api   *tgbotapi.BotAPI
-	store *store.Store
+	api          *tgbotapi.BotAPI
+	store        *store.Store
+	adminChatID  int64 // 0 = рассылка отключена; только этот chat_id может вызывать /broadcast
 }
 
-func NewHandler(api *tgbotapi.BotAPI, st *store.Store) *Handler {
-	return &Handler{api: api, store: st}
+func NewHandler(api *tgbotapi.BotAPI, st *store.Store, adminChatID int64) *Handler {
+	return &Handler{api: api, store: st, adminChatID: adminChatID}
 }
 
 func (h *Handler) HandleUpdate(update tgbotapi.Update) {
@@ -50,6 +51,8 @@ func (h *Handler) handleMessage(msg *tgbotapi.Message) {
 		h.cmdProgress(chatID)
 	case "reset_progress":
 		h.cmdResetProgress(chatID)
+	case "broadcast":
+		h.cmdBroadcast(chatID, msg.Text)
 	default:
 		// Игнорируем неизвестные команды
 	}
@@ -145,6 +148,31 @@ func (h *Handler) cmdResetProgress(chatID int64) {
 		return
 	}
 	_, _ = h.api.Send(tgbotapi.NewMessage(chatID, "Прогресс обнулён. Ты снова на дне 1. Нажми /read — пришлю план на сегодня."))
+}
+
+// cmdBroadcast — только админ (adminChatID) может отправить сообщение всем пользователям. Формат: /broadcast Текст.
+func (h *Handler) cmdBroadcast(chatID int64, fullText string) {
+	if h.adminChatID != 0 && chatID != h.adminChatID {
+		return
+	}
+	text := strings.TrimSpace(strings.TrimPrefix(fullText, "/broadcast"))
+	if text == "" {
+		_, _ = h.api.Send(tgbotapi.NewMessage(chatID, "Напиши: /broadcast Текст сообщения — он уйдёт всем пользователям."))
+		return
+	}
+	ids, err := h.store.GetAllChatIDs()
+	if err != nil {
+		_, _ = h.api.Send(tgbotapi.NewMessage(chatID, "Ошибка при получении списка пользователей."))
+		return
+	}
+	var sent int
+	for _, id := range ids {
+		if _, err := h.api.Send(tgbotapi.NewMessage(id, text)); err != nil {
+			continue
+		}
+		sent++
+	}
+	_, _ = h.api.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("Отправлено %d из %d.", sent, len(ids))))
 }
 
 func (h *Handler) handleCallback(cq *tgbotapi.CallbackQuery) {

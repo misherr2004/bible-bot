@@ -9,6 +9,7 @@ import (
 type Config struct {
 	TelegramBotToken string
 	DatabaseURL      string
+	AdminChatID      int64  // кто может слать /broadcast всем (0 = отключено)
 	ReminderHour     int
 	Timezone         string
 }
@@ -22,6 +23,13 @@ func Load() (*Config, error) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required (PostgreSQL connection string)")
+	}
+
+	var adminChatID int64
+	if s := os.Getenv("ADMIN_CHAT_ID"); s != "" {
+		if id, err := strconv.ParseInt(s, 10, 64); err == nil {
+			adminChatID = id
+		}
 	}
 
 	reminderHour := 15
@@ -39,6 +47,7 @@ func Load() (*Config, error) {
 	return &Config{
 		TelegramBotToken: token,
 		DatabaseURL:      databaseURL,
+		AdminChatID:      adminChatID,
 		ReminderHour:     reminderHour,
 		Timezone:         timezone,
 	}, nil

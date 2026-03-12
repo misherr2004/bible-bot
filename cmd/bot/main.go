@@ -38,7 +38,7 @@ func main() {
 	}
 	defer st.Close()
 
-	handler := bot.NewHandler(api, st)
+	handler := bot.NewHandler(api, st, cfg.AdminChatID)
 
 	sendReminderTo := func(chatID int64) {
 		msg := tgbotapi.NewMessage(chatID, reminderMessage)
