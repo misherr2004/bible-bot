@@ -48,6 +48,8 @@ func (h *Handler) handleMessage(msg *tgbotapi.Message) {
 		h.cmdRead(chatID)
 	case "progress":
 		h.cmdProgress(chatID)
+	case "reset_progress":
+		h.cmdResetProgress(chatID)
 	default:
 		// Игнорируем неизвестные команды
 	}
@@ -134,6 +136,15 @@ func (h *Handler) cmdProgress(chatID int64) {
 	}
 
 	_, _ = h.api.Send(tgbotapi.NewMessage(chatID, b.String()))
+}
+
+// cmdResetProgress обнуляет прогресс того, кто отправил команду. День 1, серия 0 — старт заново.
+func (h *Handler) cmdResetProgress(chatID int64) {
+	if err := h.store.ResetProgress(chatID); err != nil {
+		_, _ = h.api.Send(tgbotapi.NewMessage(chatID, "Не удалось обнулить прогресс. Попробуй ещё раз."))
+		return
+	}
+	_, _ = h.api.Send(tgbotapi.NewMessage(chatID, "Прогресс обнулён. Ты снова на дне 1. Нажми /read — пришлю план на сегодня."))
 }
 
 func (h *Handler) handleCallback(cq *tgbotapi.CallbackQuery) {

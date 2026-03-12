@@ -47,6 +47,16 @@ func (s *Store) migrate() error {
 	return err
 }
 
+// ResetProgress обнуляет прогресс пользователя: день 1, серия 0, last_read_at сброшен. Старт заново.
+func (s *Store) ResetProgress(chatID int64) error {
+	_, err := s.db.Exec(`
+		INSERT INTO user_state (chat_id, current_day, streak, last_read_at, started_at)
+		VALUES ($1, 1, 0, NULL, NOW())
+		ON CONFLICT (chat_id) DO UPDATE SET current_day = 1, streak = 0, last_read_at = NULL, started_at = NOW()
+	`, chatID)
+	return err
+}
+
 // EnsureUser создаёт запись пользователя, если её ещё нет (день 1, серия 0).
 func (s *Store) EnsureUser(chatID int64) error {
 	_, err := s.db.Exec(`
