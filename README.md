@@ -1,3 +1,207 @@
+# Bible Bot — Yearly Bible Reading Plan Bot
+
+Telegram bot that helps you read through the whole Bible in one year with a structured 3–track plan, personal progress tracking, and gentle daily reminders.
+
+---
+
+### Badges
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go version" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT" />
+  <img src="https://img.shields.io/badge/Telegram-Bot-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Bot" />
+</p>
+
+---
+
+### Features
+
+- ✝️ **Year‑long Bible reading plan** — 365‑day plan that covers the whole Bible in a balanced rhythm.
+- 👤 **Personal progress per user** — each Telegram user has their own independent reading state stored in PostgreSQL.
+- 📚 **3‑track daily reading** — Old Testament, New Testament, and Psalms/Proverbs combined into one thoughtful daily portion.
+- 🔔 **Smart daily reminders** — one reminder per day only if the user has not interacted with the bot yet.
+- 📈 **Readable progress metrics** — shows the current day, remaining days, and % of the entire Bible already read.
+- 🔁 **Streaks and last activity** — tracks continuous reading days and last read date for motivation.
+- ▶️ **Inline actions** — buttons like “Read for today”, “I’ve read”, and “Next day” directly under the plan message.
+- 🧹 **Reset progress safely** — `/reset_progress` lets a user start over from day 1 without affecting others.
+- 📣 **Admin broadcast** — admin‑only `/broadcast` command to send announcements to all active users (e.g., when the plan is updated).
+
+---
+
+### How It Works
+
+- **Three daily tracks**
+  - **Track 1 — Old Testament (without Psalms & Proverbs):** 748 chapters, usually 2 chapters per day, some days 3 to fit in 365 days.
+  - **Track 2 — New Testament:** 260 chapters, 1 chapter per day; after day 260 the NT part is no longer shown.
+  - **Track 3 — Psalms & Proverbs:** Psalms 1–150, then Proverbs 1–31 in a cycle (181 chapters looping through the year).
+
+- **Per‑user state**
+  - Each user is identified by their Telegram `chat_id`.
+  - The bot stores `current_day`, `last_read_at`, `streak`, and `started_at` in PostgreSQL.
+
+- **Streaks & reminders**
+  - Any interaction with the reading (marking as read, moving to the next day) counts as activity for that calendar day.
+  - If a day passes with no activity, the streak is reset on the next interaction.
+  - Once per day (at `REMINDER_HOUR` in `TIMEZONE`), the scheduler checks users without activity today and sends them a reminder.
+
+- **Admin broadcast**
+  - A single admin (configured via `ADMIN_CHAT_ID`) can run `/broadcast <message>`.
+  - The message is delivered to all known `chat_id`s from the database and the admin gets a short delivery summary.
+
+---
+
+### Tech Stack
+
+- **Language:** Go (1.22+)
+- **Telegram API:** [`github.com/go-telegram-bot-api/telegram-bot-api/v5`](https://github.com/go-telegram-bot-api/telegram-bot-api/v5)
+- **Database:** PostgreSQL
+- **Migrations & persistence:** custom store package (`internal/store`)
+- **Scheduling:** in‑process daily scheduler (`internal/bot/scheduler.go`)
+- **Containerization:** Docker (optional but recommended for deployment)
+
+---
+
+### Getting Started (Local Development)
+
+#### 1. Prerequisites
+
+- Go **1.22+**
+- PostgreSQL **13+** (local or in Docker)
+- Telegram bot token from **@BotFather**
+
+#### 2. Clone the repository
+
+```bash
+git clone https://github.com/your-username/bible-bot.git
+cd bible-bot
+```
+
+#### 3. Create `.env`
+
+Use `.env.example` as a reference:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your values:
+
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+DATABASE_URL=postgres://user:password@localhost:5432/bible_bot?sslmode=disable
+REMINDER_HOUR=15
+TIMEZONE=Europe/Moscow
+ADMIN_CHAT_ID=123456789  # optional: your personal Telegram chat id for /broadcast
+```
+
+#### 4. Prepare PostgreSQL
+
+If PostgreSQL is installed locally:
+
+```bash
+createdb bible_bot
+```
+
+Make sure `DATABASE_URL` in `.env` points to this database.
+
+#### 5. Run the bot
+
+```bash
+go mod download
+go run ./cmd/bot
+```
+
+You should see something like:
+
+```text
+Authorized as @your_bot_username
+[scheduler] daily reminder at 15:00 Europe/Moscow
+```
+
+Now open Telegram, start a chat with your bot, and send `/start`.
+
+---
+
+### Docker
+
+You can run both PostgreSQL and the bot via Docker or docker-compose.
+
+#### 1. Run PostgreSQL via Docker
+
+```bash
+docker run -d --name bible-postgres \
+  -e POSTGRES_USER=bot \
+  -e POSTGRES_PASSWORD=bot \
+  -e POSTGRES_DB=bible_bot \
+  -p 5432:5432 \
+  postgres:16-alpine
+```
+
+Then set in `.env`:
+
+```env
+DATABASE_URL=postgres://bot:bot@host.docker.internal:5432/bible_bot?sslmode=disable
+```
+
+or `localhost` if the bot runs on the host machine.
+
+#### 2. Build and run the bot container
+
+If the repository contains a `Dockerfile` similar to:
+
+```bash
+docker build -t bible-bot .
+```
+
+Then run:
+
+```bash
+docker run -d --name bible-bot \
+  --env-file .env \
+  --link bible-postgres:postgres \
+  bible-bot
+```
+
+Alternatively, you can wire everything through `docker-compose` (PostgreSQL service + bot service) to keep configuration in one place.
+
+---
+
+### Project Structure
+
+```text
+.
+├── cmd/
+│   └── bot/                  # Main entrypoint (Telegram bot)
+├── config/
+│   └── config.go             # Environment-based configuration (tokens, DB, timezone, admin, etc.)
+├── internal/
+│   ├── bot/
+│   │   ├── handler.go        # Telegram updates, commands, inline buttons
+│   │   └── scheduler.go      # Daily reminder scheduler
+│   ├── plan/
+│   │   └── plan.go           # 3-track Bible reading plan and progress calculation
+│   └── store/
+│       └── store.go          # PostgreSQL access, user state, streak logic
+├── .env.example              # Example environment configuration
+├── Dockerfile                # (Optional) Container image for the bot
+└── README.md
+```
+
+---
+
+### Author
+
+This project is created and maintained by a practicing Baptist who uses this bot personally and within a real Christian community.  
+It is not just a technical pet project, but a tool born out of faith and a desire to help believers consistently read and meditate on Scripture throughout the year.
+
+If you have suggestions, feedback, or want to use this bot in your church or home group, feel free to open an issue or reach out.
+
+---
+
+### License
+
+This project is licensed under the **MIT License**. See the `LICENSE` file for details.
+
 # Bible Bot — план чтения Библии на год в Telegram
 
 Бот для ежедневного плана чтения Библии (365 дней). Несколько пользователей, у каждого свой прогресс в PostgreSQL, напоминания в 12:00.
